@@ -1,0 +1,10 @@
+{
+  "name": "flash-light",
+  "permissions": {
+    "android": [],
+    "ios": {}
+  },
+  "methods": ["isAvailable", "on", "off", "toggle", "getState"],
+  "hooks": [],
+  "events": ["flash-light:changed"]
+}
