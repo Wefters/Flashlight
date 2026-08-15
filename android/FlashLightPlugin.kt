@@ -122,21 +122,10 @@ class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
                     isOn = false
                     currentLevel = 0f
                 }
-                maxStrengthLevel > 1 -> {
-                    val strength =
-                            (1 + (rawLevel * (maxStrengthLevel - 1)).toInt()).coerceIn(
-                                    1,
-                                    maxStrengthLevel
-                            )
-                    cameraManager.setTorchMode(id, true)
-                    cameraManager.setTorchStrengthLevel(id, strength)
-                    isOn = true
-                    currentLevel = rawLevel
-                }
                 else -> {
                     cameraManager.setTorchMode(id, true)
                     isOn = true
-                    currentLevel = 1f
+                    currentLevel = rawLevel.coerceAtLeast(1f)
                 }
             }
             resolve(callback, stateJson())
