@@ -51,23 +51,26 @@ final class FlashLightPlugin: WefterPlugin {
             return
         }
 
-        do {
-            try device.lockForConfiguration()
-        } catch {
-            reject(callback, code: "TORCH_UNAVAILABLE", message: "Could not access the flash: \(error.localizedDescription)")
-            return
-        }
-        defer { device.unlockForConfiguration() }
-
-        do {
-            if rawLevel <= 0 {
-                device.torchMode = .off
-            } else {
-                try device.setTorchModeOn(level: rawLevel)
+        // Dispatch hardware I/O to a background queue so the bridge thread stays responsive.
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try device.lockForConfiguration()
+            } catch {
+                self.reject(callback, code: "TORCH_UNAVAILABLE", message: "Could not access the flash: \(error.localizedDescription)")
+                return
             }
-            resolve(callback, data: stateData())
-        } catch {
-            reject(callback, code: "TORCH_UNAVAILABLE", message: "Could not set the flash level: \(error.localizedDescription)")
+            defer { device.unlockForConfiguration() }
+
+            do {
+                if rawLevel <= 0 {
+                    device.torchMode = .off
+                } else {
+                    try device.setTorchModeOn(level: rawLevel)
+                }
+                self.resolve(callback, data: self.stateData())
+            } catch {
+                self.reject(callback, code: "TORCH_UNAVAILABLE", message: "Could not set the flash level: \(error.localizedDescription)")
+            }
         }
     }
 

@@ -7,6 +7,7 @@ import android.hardware.camera2.CameraManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import java.util.concurrent.Executors
 import org.json.JSONObject
 
 class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
@@ -16,6 +17,9 @@ class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
         get() = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Single-threaded executor so torch operations are serialised and never block the bridge thread.
+    private val cameraExecutor = Executors.newSingleThreadExecutor()
 
     private val flashCameraId: String? by lazy {
         try {
@@ -103,6 +107,10 @@ class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
         resolve(callback, stateJson())
     }
 
+    /**
+     * Dispatches camera hardware I/O onto the dedicated [cameraExecutor] so the bridge thread
+     * is never blocked by the 30–80 ms torch operation.
+     */
     private fun applyLevel(rawLevel: Float, callback: (Result<Any>) -> Unit) {
         val id = flashCameraId
         if (id == null) {
@@ -115,29 +123,31 @@ class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
             return
         }
 
-        try {
-            when {
-                rawLevel <= 0f -> {
-                    cameraManager.setTorchMode(id, false)
-                    isOn = false
-                    currentLevel = 0f
+        cameraExecutor.execute {
+            try {
+                when {
+                    rawLevel <= 0f -> {
+                        cameraManager.setTorchMode(id, false)
+                        isOn = false
+                        currentLevel = 0f
+                    }
+                    else -> {
+                        cameraManager.setTorchMode(id, true)
+                        isOn = true
+                        currentLevel = rawLevel.coerceAtLeast(1f)
+                    }
                 }
-                else -> {
-                    cameraManager.setTorchMode(id, true)
-                    isOn = true
-                    currentLevel = rawLevel.coerceAtLeast(1f)
-                }
+                resolve(callback, stateJson())
+            } catch (e: CameraAccessException) {
+                reject(
+                        callback,
+                        "TORCH_UNAVAILABLE",
+                        e.message
+                                ?: "The flash is currently unavailable (in use elsewhere, or overheated)."
+                )
+            } catch (e: IllegalArgumentException) {
+                reject(callback, "INVALID_LEVEL", e.message ?: "Unsupported brightness level")
             }
-            resolve(callback, stateJson())
-        } catch (e: CameraAccessException) {
-            reject(
-                    callback,
-                    "TORCH_UNAVAILABLE",
-                    e.message
-                            ?: "The flash is currently unavailable (in use elsewhere, or overheated)."
-            )
-        } catch (e: IllegalArgumentException) {
-            reject(callback, "INVALID_LEVEL", e.message ?: "Unsupported brightness level")
         }
     }
 
