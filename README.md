@@ -1,130 +1,112 @@
-# @wefterjs/flashlight
+# @wefterjs/flash-light
 
-Official Wefter plugin for controlling hardware camera LED flashlight/torch features on Android & iOS.
-
----
+Official Wefter plugin for controlling the hardware camera LED flashlight or torch on Android and iOS.
 
 ## Features
 
-- 🔦 **Hardware Torch Control**: Programmatically turn the camera flash LED on, off, or toggle state.
-- 💡 **Brightness Intensity**: Adjust flash brightness intensity level (0.0 to 1.0) on supported devices.
-- ⚡ **State Querying & Events**: Query current torch state and subscribe to hardware state change events.
+- Check hardware availability and variable intensity torch support.
+- Turn the flashlight on with optional brightness levels.
+- Turn off or toggle the flashlight state.
+- Query current on or off state and brightness levels.
+- Subscribe to hardware state changes triggered externally by the operating system.
 
----
+## Installation and setup
 
-## Installation & Setup
-
-1. Add the plugin to your Wefter project:
-
-```bash
-wefter add @wefterjs/flashlight
-```
-
-2. Synchronize native projects:
+Install the plugin package in your Wefter application:
 
 ```bash
+wefter add @wefterjs/flash-light
 wefter sync
 ```
 
----
+## JavaScript API reference
 
-## JavaScript API Reference
-
-Import `invokeNative` and `registerHook` from `@wefterjs/core`:
+Import `FlashLight` from `@wefterjs/flash-light`:
 
 ```ts
-import { invokeNative, registerHook } from "@wefterjs/core";
+import { FlashLight } from "@wefterjs/flash-light";
 ```
 
-### 1. `isAvailable()`
-
-Checks if the physical device has a camera flash unit available.
+### Check hardware availability
 
 ```ts
-interface FlashlightAvailability {
-  available: boolean;
+const status = await FlashLight.isAvailable();
+
+console.log("Torch available:", status.available);
+console.log("Variable brightness supported:", status.variableStrengthSupported);
+if (status.maxLevel !== undefined) {
+  console.log("Maximum brightness level:", status.maxLevel);
 }
-
-const res = await invokeNative<FlashlightAvailability>("flash-light", "isAvailable");
-console.log("Hardware torch available:", res.available);
 ```
 
-### 2. `on(options)`
+### Turn flashlight on
 
-Turns the camera flashlight ON.
+Turn the torch on with default maximum brightness, or provide a specific level:
 
 ```ts
-interface FlashlightOnOptions {
-  intensity?: number; // Torch level from 0.1 to 1.0 (default: 1.0)
-}
+// Turn on at full brightness
+await FlashLight.on();
 
-await invokeNative("flash-light", "on", { intensity: 1.0 });
+// Or specify a brightness level (between 1 and maxLevel, or normalized)
+await FlashLight.on({ level: 5 });
 ```
 
-### 3. `off()`
+Resolves with `{ on: true, level: number }`.
 
-Turns the flashlight OFF.
+### Turn flashlight off
 
 ```ts
-await invokeNative("flash-light", "off");
+const state = await FlashLight.off();
+console.log("Torch state:", state.on); // false
 ```
 
-### 4. `toggle(options)`
+Resolves with `{ on: false, level: 0 }`.
 
-Toggles the flashlight state (turns ON if OFF, turns OFF if ON).
+### Toggle flashlight
+
+Switches between on and off based on current state:
 
 ```ts
-interface ToggleResult {
-  isOn: boolean;
-}
-
-const state = await invokeNative<ToggleResult>("flash-light", "toggle");
-console.log("Torch is now:", state.isOn ? "ON" : "OFF");
+const state = await FlashLight.toggle();
+console.log("Torch is now:", state.on ? "on" : "off");
 ```
 
-### 5. `getState()`
-
-Gets the current flashlight state.
+### Inspect current state
 
 ```ts
-interface FlashlightState {
-  isOn: boolean;
-  intensity: number;
-}
-
-const state = await invokeNative<FlashlightState>("flash-light", "getState");
+const state = await FlashLight.getState();
+console.log("Is on:", state.on);
+console.log("Current level:", state.level);
 ```
 
----
+### Hardware state change events
 
-## Event Subscriptions
-
-Subscribe to `flash-light:changed` event stream:
+Subscribe to torch state changes caused by camera operations or operating system controls:
 
 ```ts
-import { registerHook } from "@wefterjs/core";
-
-const sub = registerHook("flash-light:changed", (data: { isOn: boolean }) => {
-  console.log("Flashlight hardware state changed:", data.isOn);
+const sub = FlashLight.onChanged((event) => {
+  console.log("Flashlight changed:", event.on, event.level);
+  console.log("Change reason:", event.reason); // "external" or "unavailable"
 });
+
+// Remove listener when no longer needed
+sub.remove();
 ```
 
----
+## Platform implementation notes
 
-## Complete Usage Example
+### Android
 
-```ts
-import { invokeNative } from "@wefterjs/core";
+- Uses `android.hardware.camera2.CameraManager`.
+- On Android 13 (API 33) and later, uses `turnOnTorchWithStrengthLevel` for variable brightness control if supported by the camera device.
+- Registers a `CameraManager.TorchCallback` to listen to external torch state changes.
 
-export async function toggleTorchButton() {
-  const check = await invokeNative<{ available: boolean }>("flash-light", "isAvailable");
+### iOS
 
-  if (!check.available) {
-    alert("Camera LED torch is not available on this device.");
-    return;
-  }
+- Uses `AVCaptureDevice` corresponding to the default back-facing video camera.
+- Acquires configuration lock via `lockForConfiguration()`.
+- Sets torch mode using `setTorchModeOn(level:)` and monitors torch active status.
 
-  const result = await invokeNative<{ isOn: boolean }>("flash-light", "toggle");
-  console.log(`Torch switched ${result.isOn ? "ON" : "OFF"}`);
-}
-```
+## License
+
+[MIT](LICENSE) © 2026 Sandip Ghimire
