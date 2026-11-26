@@ -10,6 +10,10 @@ import android.os.Looper
 import java.util.concurrent.Executors
 import org.json.JSONObject
 
+/**
+ * Controls the camera torch through `CameraManager`, including brightness on Android 13 and later where
+ * the hardware supports it.
+ */
 class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
         WefterPlugin(context, dispatcher) {
 
@@ -18,7 +22,6 @@ class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // Single-threaded executor so torch operations are serialised and never block the bridge thread.
     private val cameraExecutor = Executors.newSingleThreadExecutor()
 
     private val flashCameraId: String? by lazy {
@@ -50,6 +53,10 @@ class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
     @Volatile private var isOn = false
     @Volatile private var currentLevel = 0f
 
+    /**
+     * Watches the torch so changes made outside the app (or the torch becoming unavailable, for example when
+     * the camera opens) are emitted as `flash-light:changed`.
+     */
     init {
         cameraManager.registerTorchCallback(
                 object : CameraManager.TorchCallback() {
@@ -71,6 +78,7 @@ class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
         )
     }
 
+    /** Whether the device has a torch, and whether and how far its brightness can be set. */
     @WefterMethod
     fun isAvailable(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         val available = flashCameraId != null
@@ -83,16 +91,19 @@ class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
         resolve(callback, result)
     }
 
+    /** Turns the torch on at `level` (default 1). */
     @WefterMethod
     fun on(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         applyLevel(payload.optDouble("level", 1.0).toFloat(), callback)
     }
 
+    /** Turns the torch off. */
     @WefterMethod
     fun off(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         applyLevel(0f, callback)
     }
 
+    /** Turns the torch off if it is on, otherwise on at `level`. */
     @WefterMethod
     fun toggle(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         if (isOn) {
@@ -102,14 +113,14 @@ class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
         }
     }
 
+    /** Whether the torch is on and its level. */
     @WefterMethod
     fun getState(payload: JSONObject, callback: (Result<Any>) -> Unit) {
         resolve(callback, stateJson())
     }
 
     /**
-     * Dispatches camera hardware I/O onto the dedicated [cameraExecutor] so the bridge thread
-     * is never blocked by the 30–80 ms torch operation.
+     * Sets the torch level, turning it off at 0. Without brightness support any level above 0 is full power.
      */
     private fun applyLevel(rawLevel: Float, callback: (Result<Any>) -> Unit) {
         val id = flashCameraId
@@ -151,6 +162,7 @@ class FlashLightPlugin(context: Context, dispatcher: BridgeDispatcher) :
         }
     }
 
+    /** The torch's current state. */
     private fun stateJson(): JSONObject =
             JSONObject().put("on", isOn).put("level", currentLevel.toDouble())
 }

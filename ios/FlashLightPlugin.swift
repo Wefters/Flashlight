@@ -1,10 +1,12 @@
 import AVFoundation
 import Foundation
 
+/// Controls the torch of the back camera through `AVCaptureDevice`.
 final class FlashLightPlugin: WefterPlugin {
 
     private lazy var device: AVCaptureDevice? = AVCaptureDevice.default(for: .video)
 
+    /// Whether the device has a torch. iOS torches always support brightness levels.
     // @WefterMethod
     func isAvailable(payload: [String: Any], callback: @escaping (Result<Any, Error>) -> Void) throws {
         let available = device?.hasTorch ?? false
@@ -14,17 +16,20 @@ final class FlashLightPlugin: WefterPlugin {
         ])
     }
 
+    /// Turns the torch on at `level` (default 1).
     // @WefterMethod
     func on(payload: [String: Any], callback: @escaping (Result<Any, Error>) -> Void) throws {
         let level = (payload["level"] as? NSNumber)?.floatValue ?? 1.0
         applyLevel(level, callback: callback)
     }
 
+    /// Turns the torch off.
     // @WefterMethod
     func off(payload: [String: Any], callback: @escaping (Result<Any, Error>) -> Void) throws {
         applyLevel(0, callback: callback)
     }
 
+    /// Turns the torch off if it is on, otherwise on at `level`.
     // @WefterMethod
     func toggle(payload: [String: Any], callback: @escaping (Result<Any, Error>) -> Void) throws {
         if device?.isTorchActive == true {
@@ -35,11 +40,15 @@ final class FlashLightPlugin: WefterPlugin {
         }
     }
 
+    /// Whether the torch is on and its level.
     // @WefterMethod
     func getState(payload: [String: Any], callback: @escaping (Result<Any, Error>) -> Void) throws {
         resolve(callback, data: stateData())
     }
 
+    /// Sets the torch level, turning it off at 0.
+    ///
+    /// Rejects with `INVALID_LEVEL` outside 0–1 and `TORCH_UNAVAILABLE` when the device cannot be configured.
     private func applyLevel(_ rawLevel: Float, callback: @escaping (Result<Any, Error>) -> Void) {
         guard let device = device, device.hasTorch else {
             reject(callback, code: "NOT_AVAILABLE", message: "No torch available on this device")
@@ -51,7 +60,6 @@ final class FlashLightPlugin: WefterPlugin {
             return
         }
 
-        // Dispatch hardware I/O to a background queue so the bridge thread stays responsive.
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try device.lockForConfiguration()
@@ -74,6 +82,7 @@ final class FlashLightPlugin: WefterPlugin {
         }
     }
 
+    /// The torch's current state.
     private func stateData() -> [String: Any] {
         ["on": device?.isTorchActive ?? false, "level": device?.torchLevel ?? 0]
     }

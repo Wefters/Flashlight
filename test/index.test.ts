@@ -97,10 +97,7 @@ describe("FlashLight.onChanged", () => {
       received = data;
     });
 
-    window.__wefterNative.emit(
-      "flash-light:changed",
-      JSON.stringify({ on: false, level: 0, reason: "unavailable" }),
-    );
+    window.__wefterNative.emit("flash-light:changed", JSON.stringify({ on: false, level: 0, reason: "unavailable" }));
 
     expect(received).toEqual({ on: false, level: 0, reason: "unavailable" });
     subscription.remove();
